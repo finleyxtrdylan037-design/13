@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标枪对战 (Javelin Duel)</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f7d794; /* 模仿参考图的黄色背景 */
+            font-family: Arial, sans-serif;
+            overflow: hidden; /* 防止滚轮 */
+        }
+        canvas {
+            display: block;
+            border: 2px solid #574b90;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            pointer-events: none; /* UI 不会拦截点击 */
+            color: #574b90;
+            display: flex;
+            justify-content: center;
+        }
+        #p1-info, #p2-info {
+            width: 250px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .hp-bar-container {
+            width: 100%;
+            height: 10px;
+            background-color: white;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid gray;
+        }
+        .hp-bar {
+            height: 100%;
+            background-color: red;
+            width: 100%;
+            transition: width 0.3s;
+        }
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: lightgray;
+            border: 2px solid white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+        }
+        #game-time {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 0 50px;
+            color: gray;
+        }
+        .player-turn {
+            border-color: red; /* 指示当前回合 */
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div id="p1-info">
+            <div id="p1-avatar" class="avatar">你</div>
+            <div>HP: <span id="p1-hp-text">100/100</span></div>
+            <div class="hp-bar-container"><div id="p1-hp-bar" class="hp-bar"></div></div>
+        </div>
+        <div id="game-time">00:00</div>
+        <div id="p2-info">
+            <div id="p2-avatar" class="avatar">电脑</div>
+            <div>HP: <span id="p2-hp-text">100/100</span></div>
+            <div class="hp-bar-container"><div id="p2-hp-bar" class="hp-bar"></div></div>
+        </div>
+    </div>
+    <canvas id="gameCanvas" width="1024" height="600"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const ui = document.getElementById('ui');
+
+    // 基础配置
+    const config = {
+        gravity: 0.15, // 重力
+        maxPower: 25, // 最大投掷力度
+        minPower: 5,
+        targetR: 20, // 玩家/电脑半径
+        playerY: 450, // 玩家/电脑在 Y 轴的位置
+        damage: 25 // 每次击中的伤害
+    };
+
+    // 游戏状态
+    let p1, p2; // 玩家和电脑
+    let spear; // 当前标枪
+    let currentTime = 0; // 游戏时间
+    let turn = 1; // 1: 玩家, 2: 电脑
+    let canThrow = true;
+    let aimX, aimY; // 瞄准点
+
+    // 初始化玩家和电脑
+    function init() {
+        p1 = {
+            id: 1, x: 200, y: config.playerY, hp: 100, maxHp: 100, isComputer: false,
+            spearStock: Infinity // 模仿图中的标枪数，简化为无限
+        };
+        p2 = {
+            id: 2, x: 824, y: config.playerY, hp: 100, maxHp: 100, isComputer: true,
+            spearStock: Infinity
+        };
+        spear = null;
+        turn = 1;
+        updateUI();
+        startTimer();
+        gameLoop();
+    }
+
+    // 标枪类
+    class Spear {
+        constructor(x, y, vx, vy, color) {
+            this.x = x; this.y = y;
+            this.vx = vx; this.vy = vy;
+            this.active = true;
+            this.tipSize = 5;
+            this.color = color;
+        }
+
+        update() {
+            if (!this.active) return;
+            this.x += this.vx;
+            this.y += this.vy;
+            this.vy += config.gravity; // 重力
+
+            // 检测边界
+            if (this.y > canvas.height + 10 || this.x < -10 || this.x > canvas.width + 10) {
+                this.active = false;
+                spear = null;
+                endTurn();
+            }
+
+            // 检测碰撞
+            let target = (turn === 1) ? p2 : p1;
+            if (this.checkCollision(target)) {
+                this.active = false;
+                dealDamage(target);
+                spear = null;
+                endTurn();
+            }
+        }
+
+        draw() {
+            if (!this.active) return;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.tipSize, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+        }
+
+        checkCollision(target) {
+            let dx = this.x - target.x;
+            let dy = this.y - target.y;
+            return Math.sqrt(dx * dx + dy * dy) < config.targetR;
+        }
+    }
+
+    // 处理伤害
+    function dealDamage(target) {
+        target.hp -= config.damage;
+        if (target.hp <= 0) target.hp = 0;
+        updateUI();
+        if (target.hp === 0) {
+            gameOver(target.id === 1 ? '电脑获胜！' : '你赢了！');
+        }
+    }
+
+    // 切换回合
+    function endTurn() {
+        canThrow = false;
+        setTimeout(() => {
+            turn = (turn === 1) ? 2 : 1;
+            updateUI();
+            if (turn === 2) {
+                computerAI(); // 轮到电脑，执行 AI
+            } else {
+                canThrow = true;
+            }
+        }, 1000); // 等待1秒让玩家看到结果
+    }
+
+    // 电脑 AI (非常简单，瞄准玩家的大致方向)
+    function computerAI() {
+        if (turn !== 2) return;
+        setTimeout(() => {
+            // 计算随机角度和力度
+            let targetX = p1.x + (Math.random() - 0.5) * 50; // 增加一点随机偏差
+            let targetY = p1.y + (Math.random() - 0.5) * 50;
+
+            let dx = targetX - p2.x;
+            let dy = targetY - p2.y;
+            let angle = Math.atan2(dy, dx);
+            // 力度在一定范围内随机
+            let power = config.minPower + Math.random() * (config.maxPower - config.minPower);
+
+            // 发射
+            spear = new Spear(p2.x, p2.y, Math.cos(angle) * power, Math.sin(angle) * power, 'black');
+        }, 1000); // 电脑思考1秒
+    }
+
+    // 更新 UI 显示
+    function updateUI() {
+        // HP
+        document.getElementById('p1-hp-text').innerText = `${p1.hp}/${p1.maxHp}`;
+        document.getElementById('p1-hp-bar').style.width = `${p1.hp / p1.maxHp * 100}%`;
+        document.getElementById('p2-hp-text').innerText = `${p2.hp}/${p2.maxHp}`;
+        document.getElementById('p2-hp-bar').style.width = `${p2.hp / p2.maxHp * 100}%`;
+
+        // 当前回合指示器
+        document.getElementById('p1-avatar').classList.remove('player-turn');
+        document.getElementById('p2-avatar').classList.remove('player-turn');
+        if (turn === 1) document.getElementById('p1-avatar').classList.add('player-turn');
+        else document.getElementById('p2-avatar').classList.add('player-turn');
+    }
+
+    // 游戏计时器
+    function startTimer() {
+        setInterval(() => {
+            currentTime++;
+            let minutes = Math.floor(currentTime / 60);
+            let seconds = currentTime % 60;
+            document.getElementById('game-time').innerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }, 1000);
+    }
+
+    // 游戏结束
+    function gameOver(message) {
+        canThrow = false;
+        setTimeout(() => {
+            alert(message);
+            location.reload(); // 重新加载
+        }, 500);
+    }
+
+    // 绘制游戏元素
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空背景
+
+        // 绘制玩家和电脑的简单形状 (参考图)
+        ctx.fillStyle = 'blue';
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, config.targetR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'red';
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, config.targetR, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 绘制标枪
+        if (spear) {
+            spear.draw();
+        }
+
+        // 玩家瞄准时绘制瞄准线
+        if (turn === 1 && aimX !== undefined && aimY !== undefined && !spear) {
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]); // 虚线
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(aimX, aimY);
+            ctx.strokeStyle = 'gray';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.setLineDash([]); // 重置为实线
+        }
+    }
+
+    // 游戏主循环
+    function gameLoop() {
+        if (spear) {
+            spear.update();
+        }
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // 鼠标输入处理 (玩家操作)
+    window.addEventListener('mousedown', (e) => {
+        if (turn !== 1 || !canThrow || spear) return;
+        let rect = canvas.getBoundingClientRect();
+        aimX = e.clientX - rect.left;
+        aimY = e.clientY - rect.top;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (turn !== 1 || !canThrow || spear) return;
+        let rect = canvas.getBoundingClientRect();
+        aimX = e.clientX - rect.left;
+        aimY = e.clientY - rect.top;
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (turn !== 1 || !canThrow || spear || aimX === undefined || aimY === undefined) return;
+        let rect = canvas.getBoundingClientRect();
+        let endX = e.clientX - rect.left;
+        let endY = e.clientY - rect.top;
+
+        // 计算发射角度和力度
+        let dx = endX - p1.x;
+        let dy = endY - p1.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        let angle = Math.atan2(dy, dx);
+        
+        // 确保是向上投掷，并在力度范围内
+        let power = Math.max(config.minPower, Math.min(distance / 10, config.maxPower));
+
+        // 发射
+        spear = new Spear(p1.x, p1.y, Math.cos(angle) * power, Math.sin(angle) * power, 'red');
+        aimX = aimY = undefined; // 清空瞄准点
+    });
+
+    // 触摸输入处理 (移动端适配)
+    // 这里只做了mousedown, mousemove, mouseup，touchstart, touchmove, touchend的实现类似，这里简略
+
+    // 启动游戏
+    init();
+
+</script>
+</body>
+</html>
