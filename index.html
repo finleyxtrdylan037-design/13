@@ -2,431 +2,727 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, orientation=landscape">
-    <title>武侠标枪对决 - 巅峰排位</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>标枪对决 - 武林争霸</title>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #222; }
-        #game-container { position: relative; width: 100vw; height: 100vh; }
-        canvas { display: block; }
-        
-        /* 横屏强制提示 */
-        #rotate-notice {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #8B0000; color: #FFD700; z-index: 999;
-            flex-direction: column; justify-content: center; align-items: center;
-            font-family: "STKaiti", "KaiTi", serif; text-align: center;
+        :root {
+            --gold: #f1c40f;
+            --red: #c0392b;
+            --dark: #2c3e50;
         }
-        @media screen and (orientation: portrait) {
-            #rotate-notice { display: flex; }
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-touch-callout: none; }
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background-color: #000; font-family: 'ZCOOL KuaiLe', cursive;
+        }
+        canvas { display: block; background: #222; }
+
+        /* 旋转提示 */
+        #rotate-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); color: white;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 1000; text-align: center;
+        }
+        @media (orientation: portrait) {
+            #rotate-overlay { display: flex; }
         }
 
-        /* 字体设置 */
-        @font-face {
-            font-family: 'WuxiaFont';
-            src: local('STKaiti'), local('KaiTi');
+        /* UI层 */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
         }
+        .btn {
+            pointer-events: auto; cursor: pointer;
+            background: linear-gradient(to bottom, #e74c3c, #c0392b);
+            border: 2px solid var(--gold); border-radius: 8px;
+            color: var(--gold); font-family: 'Ma Shan Zheng', cursive;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+
+        /* 难度选择面板 */
+        #difficulty-panel {
+            position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+        }
+        .diff-btn {
+            width: 80px; height: 40px; font-size: 18px; opacity: 0.6;
+        }
+        .diff-btn.active { opacity: 1; box-shadow: 0 0 15px var(--gold); }
+
+        /* 启动和结束界面 */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: radial-gradient(circle, #f39c12, #8e44ad); /* 初始金紫渐变 */
+            z-index: 100; pointer-events: auto;
+        }
+        #start-screen { background: radial-gradient(circle, #f1c40f, #784212); }
+        h1 { font-family: 'Ma Shan Zheng', cursive; font-size: 80px; color: #fff; text-shadow: 4px 4px 0 var(--red); margin-bottom: 10px; }
+        p { color: #fff; margin-bottom: 30px; letter-spacing: 5px; }
+        .start-btn { padding: 15px 50px; font-size: 32px; }
+
+        #end-screen { display: none; background: rgba(0,0,0,0.8); }
+        #end-status { font-size: 100px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div id="game-container">
-    <canvas id="gameCanvas"></canvas>
-    <div id="rotate-notice">
-        <h1 style="font-size: 8vw;">请旋转手机</h1>
-        <p style="font-size: 4vw;">进入横屏武侠世界</p>
+    <div id="rotate-overlay">
+        <div style="font-size: 50px;">🔄</div>
+        <p>请旋转手机以横屏体验武林对决</p>
     </div>
-</div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div id="difficulty-panel">
+            <button class="btn diff-btn" onclick="setDifficulty(0)">简单</button>
+            <button class="btn diff-btn active" onclick="setDifficulty(1)">普通</button>
+            <button class="btn diff-btn" onclick="setDifficulty(2)">困难</button>
+        </div>
+    </div>
+
+    <div id="start-screen" class="screen">
+        <h1>标枪对决</h1>
+        <p>武林争霸 · 一决高下</p>
+        <button class="btn start-btn" onclick="startGame()">开始对战</button>
+        <div style="color:rgba(255,255,255,0.7); margin-top:20px; font-size:14px;">操作：在左侧拖动瞄准，松开投掷</div>
+    </div>
+
+    <div id="end-screen" class="screen">
+        <h1 id="end-status">胜利！</h1>
+        <p id="final-score">总比分 1 : 0</p>
+        <button class="btn start-btn" onclick="resetGame()">再来一局</button>
+    </div>
 
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+/** * 游戏配置与常量
+ */
+const BASE_W = 1400;
+const BASE_H = 700;
+const GRAVITY = 0.35;
+const MAX_POWER_TIME = 1500; // 1.5秒满力
+const HEAD_RADIUS = 25;
+const TORSO_W = 40;
+const TORSO_H = 60;
+const LEG_RADIUS = 15;
 
-// --- 游戏配置 ---
-const CFG = {
-    gravity: 0.18,
-    maxPower: 22,
-    charScale: 2.0,
-    spearLen: 120,
-    platformY: 0.75,
-    shakeDecay: 0.9,
-    font: 'bold 20px STKaiti, KaiTi'
-};
+const DIFF_SETTINGS = [
+    { name: '简单', error: 14 },
+    { name: '普通', error: 7 },
+    { name: '困难', error: 2.5 }
+];
 
-// --- 游戏状态 ---
-let W, H;
-let state = 'WAIT'; // WAIT, CHARGING, FLYING, AI_TURN, GAMEOVER
-let turn = 'PLAYER';
-let shake = 0;
-let time = 0;
+/**
+ * 全局状态
+ */
+let canvas, ctx;
+let S = 1; // 缩放系数
+let gameState = 'START';
+let difficulty = 1;
+let score = { player: 0, ai: 0 };
 let particles = [];
-let rankScore = 1200;
+let hitTexts = [];
+let screenShake = 0;
 
-// --- 对象定义 ---
-let player, ai, spear;
+// 图片加载
+const images = {};
+function loadAssets() {
+    const toLoad = { 'nezha': 'nezha.png', 'wusong': 'wusong.png' };
+    let loaded = 0;
+    for (let key in toLoad) {
+        images[key] = new Image();
+        images[key].src = toLoad[key];
+        images[key].onload = () => { loaded++; };
+        images[key].onerror = () => { images[key] = null; loaded++; }; // 允许无图运行
+    }
+}
 
+/**
+ * 角色类
+ */
 class Character {
-    constructor(x, side, type) {
-        this.x = x;
-        this.side = side; // 1 for player, -1 for AI
-        this.type = type; // 'nezha' or 'wusong'
+    constructor(isPlayer) {
+        this.isPlayer = isPlayer;
+        this.reset();
+    }
+
+    reset() {
+        this.hp = 600;
         this.lives = 3;
-        this.angle = side === 1 ? -Math.PI/6 : -Math.PI*0.8;
+        this.state = 'IDLE'; // IDLE, CHARGING, THROWING, HURT
+        this.x = this.isPlayer ? 250 : BASE_W - 250;
+        this.y = 450;
+        this.platformY = 480;
+        this.floatOffset = 0;
+        this.angle = 0;
         this.power = 0;
-        this.floatY = 0;
-        this.level = type === 'nezha' ? 10 : 12;
+        this.chargeStart = 0;
+        this.shakeTime = 0;
+        this.lastAiAction = Date.now() + 1000;
+        this.spriteFrame = 0;
+        this.spriteTimer = 0;
+    }
+
+    update() {
+        // 浮动动画
+        this.floatOffset = Math.sin(Date.now() / 1000) * 5;
+        this.y = 450 + this.floatOffset;
+
+        // 抖动处理
+        if (this.shakeTime > 0) this.shakeTime--;
+
+        // AI 逻辑
+        if (!this.isPlayer && gameState === 'PLAYING' && this.state === 'IDLE') {
+            if (Date.now() > this.lastAiAction) {
+                this.startCharging();
+            }
+        }
+        if (!this.isPlayer && this.state === 'CHARGING') {
+            // AI 蓄力模拟
+            let elapsed = Date.now() - this.chargeStart;
+            if (elapsed > this.aiTargetTime) {
+                this.release();
+                this.lastAiAction = Date.now() + 1500 + Math.random() * 1000;
+            }
+        }
+    }
+
+    startCharging() {
+        this.state = 'CHARGING';
+        this.chargeStart = Date.now();
+        if (!this.isPlayer) {
+            // AI 预测弹道
+            this.angle = this.predictAngle();
+            // 加上难度误差
+            const error = (Math.random() - 0.5) * 2 * DIFF_SETTINGS[difficulty].error;
+            this.angle += (error * Math.PI / 180);
+            this.aiTargetTime = 400 + Math.random() * 800;
+        }
+    }
+
+    predictAngle() {
+        // 模拟法寻找最佳角度
+        let bestAngle = 0;
+        let minDist = 9999;
+        const targetX = player.x;
+        const targetY = player.y;
+        const speed = 15 + 0.7 * 10; // 假设中等威力
+
+        for (let a = -50; a < 50; a += 1) {
+            let rad = a * Math.PI / 180;
+            let vx = Math.cos(rad) * speed * (this.isPlayer ? 1 : -1);
+            let vy = Math.sin(rad) * speed;
+            let curX = this.x, curY = this.y;
+            
+            // 简单轨迹步进
+            for(let t=0; t<100; t++) {
+                curX += vx; curY += vy; vy += GRAVITY;
+                if (Math.abs(curX - targetX) < 20) {
+                    let dist = Math.abs(curY - targetY);
+                    if (dist < minDist) { minDist = dist; bestAngle = rad; }
+                    break;
+                }
+            }
+        }
+        return bestAngle;
+    }
+
+    release() {
+        let duration = Math.min(Date.now() - this.chargeStart, MAX_POWER_TIME);
+        let powerPercent = duration / MAX_POWER_TIME;
+        let speed = 16 + powerPercent * 12;
+        
+        spears.push(new Spear(
+            this.x, this.y - 20, 
+            this.angle, speed, this.isPlayer
+        ));
+
+        this.state = 'THROWING';
+        setTimeout(() => { if(this.state === 'THROWING') this.state = 'IDLE'; }, 500);
+    }
+
+    takeDamage(isHeadshot) {
+        const damage = isHeadshot ? 2 : 1;
+        this.lives -= damage;
+        this.hp -= damage * 200;
+        this.state = 'HURT';
+        this.shakeTime = 30;
+        screenShake = 15;
+        setTimeout(() => { if(this.lives > 0) this.state = 'IDLE'; }, 800);
+        
+        if (this.lives <= 0) {
+            this.lives = 0;
+            this.hp = 0;
+            endGame(this.isPlayer ? 'AI' : 'PLAYER');
+        }
     }
 
     draw() {
-        this.floatY = Math.sin(time * 0.05) * 8;
-        const cx = this.x;
-        const cy = H * CFG.platformY - 50 + this.floatY;
-
         ctx.save();
-        ctx.translate(cx, cy);
-
-        // 1. 浮空平台
-        ctx.fillStyle = '#3d2b1f';
+        ctx.translate(this.x, this.y);
+        
+        // 绘制阴影
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
         ctx.beginPath();
-        ctx.ellipse(0, 70, 80, 20, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, this.platformY - this.y + 10, 40, 10, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#FFD700';
-        ctx.lineWidth = 3;
-        ctx.stroke();
 
-        // 2. 角色渲染 (2.0倍放大)
-        const s = CFG.charScale;
-        ctx.scale(this.side, 1); // AI 镜像
+        if (this.shakeTime > 0 && Math.floor(Date.now()/50)%2) {
+            ctx.translate((Math.random()-0.5)*10, 0);
+        }
 
-        if (this.type === 'nezha') {
-            // 红绸带动画
-            ctx.strokeStyle = '#e63946';
-            ctx.lineWidth = 5;
-            ctx.beginPath();
-            ctx.moveTo(-10*s, 0);
-            for(let i=0; i<15; i++) {
-                ctx.lineTo(-20*s - i*8, Math.sin(time*0.15 + i)*12);
-            }
-            ctx.stroke();
-
-            // 身体与丸子头
-            ctx.fillStyle = '#f1faee'; // 肤色
-            ctx.beginPath(); ctx.arc(0, -35*s, 12*s, 0, Math.PI*2); ctx.fill(); // 脸
-            ctx.fillStyle = '#000'; // 头发
-            ctx.beginPath(); ctx.arc(-10*s, -45*s, 6*s, 0, Math.PI*2); ctx.fill(); // 左丸子
-            ctx.beginPath(); ctx.arc(10*s, -45*s, 6*s, 0, Math.PI*2); ctx.fill(); // 右丸子
-            ctx.fillStyle = '#e63946'; // 红衣
-            ctx.fillRect(-10*s, -25*s, 20*s, 30*s);
-            // 额头火焰
-            ctx.fillStyle = '#ffd700';
-            ctx.beginPath(); ctx.arc(0, -38*s, 2, 0, Math.PI*2); ctx.fill();
+        // 绘制角色 (如果有图用图，没图用几何体)
+        const img = this.isPlayer ? images.nezha : images.wusong;
+        if (img) {
+            this.drawSprite(img);
         } else {
-            // 武松
-            ctx.fillStyle = '#2a3d66'; // 蓝衣
-            ctx.fillRect(-12*s, -25*s, 24*s, 35*s);
-            ctx.fillStyle = '#f1faee';
-            ctx.beginPath(); ctx.arc(0, -38*s, 13*s, 0, Math.PI*2); ctx.fill(); // 脸
-            ctx.fillStyle = '#333'; // 头巾
-            ctx.fillRect(-15*s, -48*s, 30*s, 10*s);
-            ctx.beginPath(); ctx.arc(0, -52*s, 5*s, 0, Math.PI*2); ctx.fill(); // 发髻
-            // 鬓角
-            ctx.fillStyle = '#111';
-            ctx.fillRect(10*s, -35*s, 4, 12);
-            ctx.fillRect(-14*s, -35*s, 4, 12);
+            this.drawPlaceholder();
+        }
+
+        // 蓄力条
+        if (this.state === 'CHARGING' && this.isPlayer) {
+            let p = Math.min((Date.now() - this.chargeStart) / MAX_POWER_TIME, 1);
+            this.drawPowerBar(p);
+            this.drawAimLine();
         }
 
         ctx.restore();
     }
+
+    drawSprite(img) {
+        // 简化的精灵图裁剪逻辑
+        // 假设 Nezha 精灵图宽度为 IDLE 4帧等
+        let frameW = img.width / 10; 
+        let frameH = img.height / 5;
+        let sx = 0, sy = 0;
+
+        if (this.state === 'IDLE') sx = (Math.floor(Date.now()/150)%4) * frameW;
+        if (this.state === 'CHARGING') sx = 2 * frameW;
+        if (this.state === 'HURT') { sy = img.height - frameH; sx = 0; }
+
+        ctx.drawImage(img, sx, sy, frameW, frameH, -60, -100, 120, 120);
+    }
+
+    drawPlaceholder() {
+        ctx.fillStyle = this.isPlayer ? '#e74c3c' : '#3498db';
+        ctx.fillRect(-20, -80, 40, 80);
+        ctx.fillStyle = '#f39c12';
+        ctx.beginPath(); ctx.arc(0, -90, 20, 0, Math.PI*2); ctx.fill();
+    }
+
+    drawPowerBar(p) {
+        ctx.strokeStyle = '#fff';
+        ctx.strokeRect(-40, -130, 80, 10);
+        let color = `rgb(${p*255}, ${255-p*100}, 0)`;
+        ctx.fillStyle = color;
+        ctx.fillRect(-40, -130, 80 * p, 10);
+        ctx.font = '12px Arial';
+        ctx.fillText(Math.floor(p*100)+'%', 0, -135);
+    }
+
+    drawAimLine() {
+        ctx.save();
+        ctx.rotate(this.angle);
+        ctx.setLineDash([5, 5]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.moveTo(20, 0);
+        ctx.lineTo(300, 0);
+        ctx.stroke();
+        // 准星
+        ctx.strokeStyle = 'red';
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.arc(300, 0, 10, 0, Math.PI*2);
+        ctx.stroke();
+        ctx.moveTo(290, 0); ctx.lineTo(310, 0);
+        ctx.moveTo(300, -10); ctx.lineTo(300, 10);
+        ctx.stroke();
+        ctx.restore();
+    }
 }
 
+/**
+ * 标枪类
+ */
 class Spear {
-    constructor(x, y, angle, power, owner) {
+    constructor(x, y, angle, speed, fromPlayer) {
         this.x = x; this.y = y;
-        this.vx = Math.cos(angle) * power;
-        this.vy = Math.sin(angle) * power;
+        this.vx = Math.cos(angle) * speed * (fromPlayer ? 1 : -1);
+        this.vy = Math.sin(angle) * speed;
+        this.fromPlayer = fromPlayer;
+        this.history = [];
+        this.active = true;
         this.angle = angle;
-        this.owner = owner;
-        this.trail = [];
     }
+
     update() {
-        this.trail.push({x: this.x, y: this.y});
-        if(this.trail.length > 8) this.trail.shift();
+        this.history.push({x: this.x, y: this.y});
+        if (this.history.length > 20) this.history.shift();
+
         this.x += this.vx;
         this.y += this.vy;
-        this.vy += CFG.gravity;
+        this.vy += GRAVITY;
         this.angle = Math.atan2(this.vy, this.vx);
-    }
-    draw() {
-        // 拖影
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        this.trail.forEach((p, i) => { i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); });
-        ctx.stroke();
 
-        // 标枪
+        if (this.x < 0 || this.x > BASE_W || this.y > BASE_H) this.active = false;
+
+        // 碰撞检测
+        let target = this.fromPlayer ? ai : player;
+        if (this.checkCollision(target)) {
+            this.active = false;
+        }
+    }
+
+    checkCollision(target) {
+        if (target.state === 'HURT') return false;
+
+        // 头部检测
+        let headDist = Math.hypot(this.x - target.x, this.y - (target.y - 70));
+        if (headDist < HEAD_RADIUS) {
+            target.takeDamage(true);
+            this.createHitEffects(this.x, this.y, "爆头！");
+            return true;
+        }
+
+        // 躯干检测 (矩形)
+        if (this.x > target.x - TORSO_W/2 && this.x < target.x + TORSO_W/2 &&
+            this.y > target.y - 60 && this.y < target.y) {
+            target.takeDamage(false);
+            this.createHitEffects(this.x, this.y, this.fromPlayer ? "命中！" : "被击中！");
+            return true;
+        }
+
+        return false;
+    }
+
+    createHitEffects(x, y, text) {
+        for(let i=0; i<20; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10,
+                life: 1.0, color: ['#fff','#f1c40f','#e67e22','#e74c3c'][Math.floor(Math.random()*4)]
+            });
+        }
+        hitTexts.push({ x, y: y-50, text, life: 1.0 });
+    }
+
+    draw() {
+        // 拖尾
+        if (this.history.length > 2) {
+            ctx.beginPath();
+            ctx.moveTo(this.history[0].x, this.history[0].y);
+            for(let p of this.history) ctx.lineTo(p.x, p.y);
+            ctx.strokeStyle = 'rgba(241, 196, 15, 0.4)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
-        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 5;
-        ctx.beginPath(); ctx.moveTo(-CFG.spearLen/2, 0); ctx.lineTo(CFG.spearLen/2, 0); ctx.stroke();
-        ctx.fillStyle = '#FFD700'; // 金枪头
+        
+        // 绘制标枪
+        const len = 80;
+        // 枪杆
+        ctx.strokeStyle = '#5d4037';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-len/2, 0); ctx.lineTo(len/2, 0); ctx.stroke();
+        // 枪头
+        ctx.fillStyle = '#bdc3c7';
         ctx.beginPath();
-        ctx.moveTo(CFG.spearLen/2, 0); ctx.lineTo(CFG.spearLen/2-20, -8); ctx.lineTo(CFG.spearLen/2-20, 8); ctx.fill();
+        ctx.moveTo(len/2, 0); ctx.lineTo(len/2-15, -6); ctx.lineTo(len/2-15, 6); ctx.fill();
+        // 羽毛
+        ctx.fillStyle = '#c0392b';
+        ctx.fillRect(-len/2, -4, 15, 8);
+        
         ctx.restore();
     }
 }
 
-// --- 逻辑函数 ---
+/**
+ * 核心游戏逻辑
+ */
+const player = new Character(true);
+const ai = new Character(false);
+let spears = [];
 
 function init() {
+    canvas = document.getElementById('gameCanvas');
+    ctx = canvas.getContext('2d');
+    window.addEventListener('resize', resize);
     resize();
-    player = new Character(W * 0.2, 1, 'nezha');
-    ai = new Character(W * 0.8, -1, 'wusong');
-    loop();
-}
+    loadAssets();
 
-function resize() {
-    W = canvas.width = window.innerWidth;
-    H = canvas.height = window.innerHeight;
-}
-
-window.addEventListener('resize', resize);
-
-// 操作：仅左半侧触发
-let startY = 0;
-canvas.addEventListener('mousedown', (e) => handleStart(e.clientX, e.clientY));
-canvas.addEventListener('touchstart', (e) => handleStart(e.touches[0].clientX, e.touches[0].clientY));
-
-function handleStart(x, y) {
-    if (state !== 'WAIT' || turn !== 'PLAYER' || x > W/2) return;
-    state = 'CHARGING';
-    startY = y;
-}
-
-canvas.addEventListener('mousemove', (e) => handleMove(e.clientY));
-canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    handleMove(e.touches[0].clientY);
-}, {passive: false});
-
-function handleMove(y) {
-    if (state !== 'CHARGING') return;
-    let dy = y - startY;
-    player.angle = -Math.PI/6 + (dy * 0.005);
-    player.power = Math.min(CFG.maxPower, player.power + 0.2);
-}
-
-canvas.addEventListener('mouseup', handleEnd);
-canvas.addEventListener('touchend', handleEnd);
-
-function handleEnd() {
-    if (state !== 'CHARGING') return;
-    fire(player);
-}
-
-function fire(char) {
-    const launchY = H * CFG.platformY - 100 + char.floatY;
-    spear = new Spear(char.x, launchY, char.angle, char.power + 8, char === player ? 'PLAYER' : 'AI');
-    char.power = 0;
-    state = 'FLYING';
-}
-
-function aiLogic() {
-    state = 'AI_THINKING';
-    setTimeout(() => {
-        // 简单AI公式：根据距离估算，带随机偏移
-        const dx = player.x - ai.x;
-        ai.angle = -Math.PI * 0.8 + (Math.random() - 0.5) * 0.2;
-        ai.power = 12 + Math.random() * 8;
-        fire(ai);
-    }, 1500);
-}
-
-function createExplosion(x, y) {
-    shake = 15;
-    for(let i=0; i<20; i++) {
-        particles.push({
-            x, y, 
-            vx: (Math.random()-0.5)*15, vy: (Math.random()-0.5)*15,
-            life: 1, color: i % 2 === 0 ? '#FFD700' : '#FF4500'
-        });
-    }
-}
-
-// --- 渲染循环 ---
-
-function loop() {
-    time++;
-    ctx.clearRect(0, 0, W, H);
-
-    // 1. 背景：金黄色山水
-    let sky = ctx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, '#FFD700'); sky.addColorStop(1, '#FFA500');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, H);
-
-    // 远山剪影
-    ctx.fillStyle = 'rgba(139, 69, 19, 0.2)';
-    ctx.beginPath();
-    ctx.moveTo(0, H * 0.8);
-    ctx.lineTo(W * 0.3, H * 0.4); ctx.lineTo(W * 0.6, H * 0.8);
-    ctx.fill();
-    // 宝塔
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.fillRect(W * 0.7, H * 0.3, 40, 100);
-
-    // 震屏
-    ctx.save();
-    if (shake > 0.1) {
-        ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
-        shake *= CFG.shakeDecay;
-    }
-
-    // 2. 绘制人物
-    player.draw();
-    ai.draw();
-
-    // 3. 标枪逻辑
-    if (state === 'FLYING' && spear) {
-        spear.update();
-        // 仅在屏幕内绘制
-        if (spear.x > 0 && spear.x < W && spear.y < H) {
-            spear.draw();
-        } else if (spear.y > H || spear.x < 0 || spear.x > W) {
-            // 飞出界，切换回合
-            nextTurn();
+    // 输入处理
+    const handleStart = (e) => {
+        if (gameState !== 'PLAYING') return;
+        let pos = getTouchPos(e);
+        if (pos.x < BASE_W / 2 * S) {
+            player.startCharging();
+            player.touchStart = pos;
         }
-
-        // 碰撞检测
-        let target = spear.owner === 'PLAYER' ? ai : player;
-        let dist = Math.hypot(spear.x - target.x, spear.y - (H * CFG.platformY - 50 + target.floatY));
-        if (dist < 50) {
-            target.lives--;
-            createExplosion(spear.x, spear.y);
-            spear = null;
-            if (target.lives <= 0) {
-                state = 'GAMEOVER';
-                setTimeout(() => {
-                    alert(target === ai ? "大获全胜！声望 +50" : "技不如人，请大侠重新修炼");
-                    location.reload();
-                }, 1000);
-            } else {
-                nextTurn();
-            }
+    };
+    const handleMove = (e) => {
+        if (player.state === 'CHARGING') {
+            let pos = getTouchPos(e);
+            let dy = pos.y - player.touchStart.y;
+            // 映射：手指下滑 -> 标枪上抬
+            player.angle = -dy / 200; 
+            // 限制角度
+            player.angle = Math.max(-Math.PI/3, Math.min(Math.PI/4, player.angle));
         }
-    }
+    };
+    const handleEnd = () => {
+        if (player.state === 'CHARGING') player.release();
+    };
 
-    // 4. 粒子
-    particles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.life -= 0.02;
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.life;
-        ctx.fillRect(p.x, p.y, 5, 5);
-    });
-    particles = particles.filter(p => p.life > 0);
-    ctx.globalAlpha = 1;
-
-    ctx.restore();
-
-    // 5. UI界面渲染
-    drawUI();
-    
-    if (state === 'CHARGING') drawAim();
+    canvas.addEventListener('mousedown', handleStart);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(e.touches[0]); }, {passive:false});
+    window.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e.touches[0]); }, {passive:false});
+    window.addEventListener('touchend', handleEnd);
 
     requestAnimationFrame(loop);
 }
 
-function nextTurn() {
-    spear = null;
-    turn = turn === 'PLAYER' ? 'AI' : 'PLAYER';
-    if (turn === 'AI') {
-        aiLogic();
-    } else {
-        state = 'WAIT';
+function getTouchPos(e) {
+    let rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function resize() {
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+    canvas.width = w;
+    canvas.height = h;
+    S = Math.min(w / BASE_W, h / BASE_H);
+}
+
+function startGame() {
+    document.getElementById('start-screen').style.display = 'none';
+    gameState = 'PLAYING';
+    player.reset();
+    ai.reset();
+    spears = [];
+}
+
+function setDifficulty(d) {
+    difficulty = d;
+    document.querySelectorAll('.diff-btn').forEach((b, i) => {
+        b.classList.toggle('active', i === d);
+    });
+}
+
+function endGame(winner) {
+    if (gameState === 'END') return;
+    gameState = 'END';
+    if (winner === 'PLAYER') score.player++; else score.ai++;
+    
+    setTimeout(() => {
+        document.getElementById('end-screen').style.display = 'flex';
+        document.getElementById('end-status').innerText = winner === 'PLAYER' ? "胜利！" : "败北";
+        document.getElementById('final-score').innerText = `总比分 ${score.player} : ${score.ai}`;
+    }, 1500);
+}
+
+function resetGame() {
+    document.getElementById('end-screen').style.display = 'none';
+    startGame();
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+function update() {
+    if (gameState === 'PLAYING' || gameState === 'END') {
+        player.update();
+        ai.update();
+        spears.forEach(s => s.update());
+        spears = spears.filter(s => s.active);
+
+        // 粒子更新
+        particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+        });
+        particles = particles.filter(p => p.life > 0);
+
+        hitTexts.forEach(t => { t.y -= 1; t.life -= 0.02; });
+        hitTexts = hitTexts.filter(t => t.life > 0);
+
+        if (screenShake > 0) screenShake *= 0.9;
     }
 }
 
-function drawAim() {
-    const launchY = H * CFG.platformY - 100 + player.floatY;
+function draw() {
+    ctx.clearRect(0,0, canvas.width, canvas.height);
     ctx.save();
-    // 虚线
-    ctx.setLineDash([10, 10]);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.beginPath();
-    ctx.moveTo(player.x, launchY);
-    const tx = player.x + Math.cos(player.angle) * 200;
-    const ty = launchY + Math.sin(player.angle) * 200;
-    ctx.lineTo(tx, ty);
-    ctx.stroke();
+    
+    // 居中缩放
+    ctx.translate(canvas.width/2, canvas.height/2);
+    ctx.scale(S, S);
+    ctx.translate(-BASE_W/2, -BASE_H/2);
 
-    // 准星
-    ctx.setLineDash([]);
-    ctx.strokeStyle = '#e63946';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(tx, ty, 15, 0, Math.PI*2);
-    ctx.moveTo(tx-20, ty); ctx.lineTo(tx+20, ty);
-    ctx.moveTo(tx, ty-20); ctx.lineTo(tx, ty+20);
-    ctx.stroke();
+    // 震动
+    if (screenShake > 0) ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake);
 
-    // 蓄力条 (右侧百分比)
-    const p = player.power / CFG.maxPower;
-    const barColor = p < 0.4 ? '#2ecc71' : (p < 0.8 ? '#f1c40f' : '#e74c3c');
+    drawBackground();
+    
+    drawPlatform(250, 480 + player.floatOffset/2);
+    drawPlatform(BASE_W - 250, 480 + ai.floatOffset/2);
+
+    player.draw();
+    ai.draw();
+    spears.forEach(s => s.draw());
+
+    // 绘制粒子
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // 绘制文字
+    hitTexts.forEach(t => {
+        ctx.globalAlpha = t.life;
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 40px Ma Shan Zheng';
+        ctx.shadowBlur = 10; ctx.shadowColor = 'red';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.text, t.x, t.y);
+        ctx.shadowBlur = 0;
+    });
+    ctx.globalAlpha = 1;
+
+    drawHUD();
+    ctx.restore();
+}
+
+function drawBackground() {
+    let grad = ctx.createRadialGradient(BASE_W/2, BASE_H/3, 50, BASE_W/2, BASE_H/2, 600);
+    grad.addColorStop(0, '#f39c12');
+    grad.addColorStop(1, '#784212');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0, BASE_W, BASE_H);
+
+    // 远山
+    ctx.fillStyle = 'rgba(46, 26, 0, 0.3)';
+    drawMountain(0, 500, 150, 0.5);
+    drawMountain(300, 500, 200, 0.4);
+    
+    // 宝塔
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(100, 300, 40, 150);
+    ctx.fillRect(BASE_W-140, 280, 40, 170);
+
+    // 底部薄雾
+    let mist = ctx.createLinearGradient(0, 550, 0, BASE_H);
+    mist.addColorStop(0, 'rgba(255,255,255,0)');
+    mist.addColorStop(1, 'rgba(255,255,255,0.3)');
+    ctx.fillStyle = mist;
+    ctx.fillRect(0, 550, BASE_W, 150);
+}
+
+function drawMountain(x, y, h, speed) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 200, y - h);
+    ctx.lineTo(x + 400, y);
+    ctx.fill();
+}
+
+function drawPlatform(x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+    // 草皮
+    ctx.fillStyle = '#27ae60';
+    ctx.beginPath(); ctx.ellipse(0, 0, 100, 20, 0, 0, Math.PI*2); ctx.fill();
+    // 岩石
+    ctx.fillStyle = '#7f8c8d';
+    ctx.beginPath();
+    ctx.moveTo(-100, 0); ctx.quadraticCurveTo(0, 80, 100, 0); ctx.fill();
+    ctx.restore();
+}
+
+function drawHUD() {
+    // 顶部记分
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(player.x - 50, launchY + 80, 100, 15);
-    ctx.fillStyle = barColor;
-    ctx.fillRect(player.x - 50, launchY + 80, 100 * p, 15);
+    roundRect(ctx, BASE_W/2 - 100, 20, 200, 60, 10, true);
     ctx.fillStyle = '#fff';
-    ctx.font = '14px WuxiaFont';
-    ctx.fillText(Math.floor(p*100) + "%", player.x - 15, launchY + 115);
-    ctx.restore();
+    ctx.font = '16px Arial'; ctx.textAlign = 'center';
+    ctx.fillText("排位赛", BASE_W/2, 40);
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(`${score.player} : ${score.ai}`, BASE_W/2, 65);
+
+    // 玩家信息 (左)
+    drawInfoPanel(40, 30, player, "哪吒", "哪", "#c0392b");
+    // AI 信息 (右)
+    drawInfoPanel(BASE_W - 300, 30, ai, "武松", "武", "#2980b9");
 }
 
-function drawUI() {
-    // 顶部排位分
-    ctx.fillStyle = '#8B0000';
-    ctx.fillRect(W/2 - 80, 0, 160, 40);
-    ctx.strokeStyle = '#FFD700';
-    ctx.strokeRect(W/2 - 80, 0, 160, 40);
-    ctx.fillStyle = '#FFD700';
-    ctx.font = CFG.font;
-    ctx.textAlign = 'center';
-    ctx.fillText(`巅峰赛: ${rankScore}`, W/2, 28);
-
-    // 左右血条
-    drawHealth(50, 50, player, 'PLAYER');
-    drawHealth(W - 250, 50, ai, 'AI');
-}
-
-function drawHealth(x, y, char, label) {
+function drawInfoPanel(x, y, char, name, head, color) {
     ctx.save();
-    // 头像框
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#FFD700';
-    ctx.fillStyle = '#5c0000';
-    ctx.beginPath(); ctx.arc(label==='PLAYER'?x:x+200, y+20, 35, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-    
-    // 等级
-    ctx.fillStyle = '#FFD700';
-    ctx.font = '16px WuxiaFont';
-    ctx.fillText(`Lv.${char.level}`, label==='PLAYER'?x:x+200, y+70);
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    roundRect(ctx, 0, 0, 260, 80, 10, true, true);
 
-    // 血条背景
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(label==='PLAYER'?x+45:x-5, y, 150, 20);
-    // 红色血条
-    ctx.fillStyle = '#e63946';
-    ctx.fillRect(label==='PLAYER'?x+45:x-5, y, (char.lives/3)*150, 20);
-    
-    // 爱心
+    // 头像
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(40, 40, 30, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '30px Ma Shan Zheng'; ctx.textAlign = 'center';
+    ctx.fillText(head, 40, 50);
+
+    // 名字和等级
+    ctx.textAlign = 'left'; ctx.font = '18px Arial';
+    ctx.fillText(name, 85, 30);
+    ctx.fillStyle = '#2ecc71'; ctx.font = '12px Arial';
+    ctx.fillText("等级 10", 130, 30);
+
+    // 血条
+    ctx.fillStyle = '#333';
+    ctx.fillRect(85, 45, 150, 15);
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(85, 45, 150 * (char.hp / 600), 15);
+    ctx.fillStyle = '#fff'; ctx.font = '10px Arial';
+    ctx.fillText(`${char.hp}/600`, 140, 56);
+
+    // 生命心
     for(let i=0; i<3; i++) {
-        ctx.fillStyle = i < char.lives ? '#e63946' : '#333';
-        ctx.font = '24px Arial';
-        ctx.fillText('❤', label==='PLAYER' ? (x+45+i*35) : (x+120-i*35), y+45);
+        ctx.font = '20px Arial';
+        ctx.fillText(i < char.lives ? "❤️" : "🖤", 85 + i*25, 75);
     }
     ctx.restore();
 }
 
+function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+}
+
+// 启动
 init();
 </script>
 </body>
